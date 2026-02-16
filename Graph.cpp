@@ -585,10 +585,8 @@ void solveProblem2(Graph &graph, double srcLat, double srcLon,
     exportPathToKML(graph, path, "route_problem2.kml");
 }
 
-// ============================================================================
-// PROBLEM 3: CHEAPEST ROUTE (CAR + METRO + BUSES)
-// ============================================================================
 
+// PROBLEM 3: Find cheapest route using car, metro, and both bus types
 void solveProblem3(Graph &graph, double srcLat, double srcLon, 
                    double destLat, double destLon) {
     
@@ -677,7 +675,7 @@ void solveProblem3(Graph &graph, double srcLat, double srcLon,
     cout << "Source: (" << srcLon << ", " << srcLat << ")\n";
     cout << "Destination: (" << destLon << ", " << destLat << ")\n\n";
     
-    // Walking from source
+    // Walking from source if needed
     if (fabs(graph.nodes[source].lat - srcLat) > 1e-6 || 
         fabs(graph.nodes[source].lon - srcLon) > 1e-6) {
         double walkDist = haversineDistance(srcLat, srcLon, 
@@ -737,7 +735,7 @@ void solveProblem3(Graph &graph, double srcLat, double srcLon,
              << ", Distance: " << segmentDist << " km, Cost: ৳" << segmentCost << "\n";
     }
     
-    // Walking to destination
+    // Walking to destination if needed
     if (fabs(graph.nodes[target].lat - destLat) > 1e-6 || 
         fabs(graph.nodes[target].lon - destLon) > 1e-6) {
         double walkDist = haversineDistance(graph.nodes[target].lat, 
@@ -765,11 +763,6 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
     
     int source = graph.findNearestNode(srcLat, srcLon);
     int target = graph.findNearestNode(destLat, destLon);
-    
-    if (source == -1 || target == -1) {
-        cout << "Error: Could not find nodes\n";
-        return;
-    }
     
     cout << "Source Node: " << graph.nodes[source].name << "\n";
     cout << "Target Node: " << graph.nodes[target].name << "\n";
@@ -831,11 +824,10 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
                     waitTime = getWaitingTime((int)arrivalTime[u], edge.mode);
                     if (waitTime >= INF) continue;  // Service not available
                 }
-                // Otherwise, continuing on same vehicle, no wait
             }
             
             // Calculate travel time at 30 km/h
-            double travelTime = (edge.distance / 30.0) * 60.0;  // in minutes
+            double travelTime = (edge.distance / VEHICLE_SPEED_KMH) * 60.0;  // in minutes
             double newArrivalTime = arrivalTime[u] + waitTime + travelTime;
             
             // Calculate cost
@@ -886,7 +878,7 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
     cout << "Destination: (" << destLon << ", " << destLat << ")\n";
     cout << "Start Time: " << formatTime(startTimeMin) << "\n\n";
     
-    // Walking from source
+    // Walking from source if needed
     if (fabs(graph.nodes[source].lat - srcLat) > 1e-6 || 
         fabs(graph.nodes[source].lon - srcLon) > 1e-6) {
         double walkDist = haversineDistance(srcLat, srcLon, 
@@ -919,9 +911,19 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
         auto &edge = graph.adjList[from][edgeIdx];
         Mode mode = edge.mode;
         
-        // Check if need to wait (only when boarding)
-        if (mode != MODE_CAR && mode != MODE_WALK) {
-            if (isFirstSegment || mode != prevMode) {
+        // Check if mode changed
+        if (mode != currentMode) {
+            // Print accumulated segment if exists
+            if (currentMode != MODE_WALK && segmentDist > 0) {
+                cout << "[" << formatTime((int)segmentStartTime) << "] Ride " 
+                     << getModeName(currentMode) << " from " << graph.nodes[segmentStart].name 
+                     << " to " << graph.nodes[from].name << ", Distance: " << segmentDist 
+                     << " km, Time: " << segmentTime << " min, Cost: ৳" << segmentCost << "\n";
+                currentTime = segmentStartTime + segmentTime;
+            }
+            
+            // Check if need to wait for new vehicle
+            if (mode != MODE_CAR && mode != MODE_WALK) {
                 double waitTime = getWaitingTime((int)currentTime, mode);
                 if (waitTime > 0 && waitTime < INF) {
                     cout << "[" << formatTime((int)currentTime) << "] Wait for "
@@ -946,8 +948,7 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
         else if (mode == MODE_BIKOLPO) rate = bikolpoRate;
         else if (mode == MODE_UTTARA) rate = uttaraRate;
         
-        double segCost = segDist * rate;
-        double travelTime = (segDist / VEHICLE_SPEED_KMH) * 60.0;
+        double travelTime = (edge.distance / VEHICLE_SPEED_KMH) * 60.0;
         
         segmentDist += edge.distance;
         segmentCost += edge.distance * rate;
@@ -966,7 +967,7 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
         currentTime = segmentStartTime + segmentTime;
     }
     
-    // Walking to destination
+    // Walking to destination if needed
     if (fabs(graph.nodes[target].lat - destLat) > 1e-6 || 
         fabs(graph.nodes[target].lon - destLon) > 1e-6) {
         double walkDist = haversineDistance(graph.nodes[target].lat, 
@@ -992,22 +993,14 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
     exportPathToKML(graph, path, "route_problem4.kml");
 }
 
-// ============================================================================
-// PROBLEM 5: FASTEST ROUTE WITH TIME SCHEDULES
-// ============================================================================
-
+// PROBLEM 5: fastest way (schedules are still considered)
 void solveProblem5(Graph &graph, double srcLat, double srcLon, 
                    double destLat, double destLon, int startTimeMin) {
     
-    cout << "\n Problem No : 5\n";
+    cout << "\n=== Problem 5: Fastest Route ===\n";
     
     int source = graph.findNearestNode(srcLat, srcLon);
     int target = graph.findNearestNode(destLat, destLon);
-    
-    if (source == -1 || target == -1) {
-        cout << "Error: Could not find nodes\n";
-        return;
-    }
     
     cout << "Source Node: " << graph.nodes[source].name << "\n";
     cout << "Target Node: " << graph.nodes[target].name << "\n";
@@ -1062,7 +1055,6 @@ void solveProblem5(Graph &graph, double srcLat, double srcLon,
                 }
             }
             
-            // Calculate travel time at 10 km/h (slower than Problem 4!)
             double travelTime = (edge.distance / VEHICLE_SPEED_PROBLEM5_KMH) * 60.0;
             double newArrivalTime = arrivalTime[u] + waitTime + travelTime;
             
@@ -1105,7 +1097,7 @@ void solveProblem5(Graph &graph, double srcLat, double srcLon,
     cout << "Destination: (" << destLon << ", " << destLat << ")\n";
     cout << "Start Time: " << formatTime(startTimeMin) << "\n\n";
     
-    // Walking from source
+    // Walking from source if needed
     if (fabs(graph.nodes[source].lat - srcLat) > 1e-6 || 
         fabs(graph.nodes[source].lon - srcLon) > 1e-6) {
         double walkDist = haversineDistance(srcLat, srcLon, 
@@ -1194,7 +1186,7 @@ void solveProblem5(Graph &graph, double srcLat, double srcLon,
         currentTime = segmentStartTime + segmentTime;
     }
     
-    // Walking to destination
+    // Walking to destination if needed
     if (fabs(graph.nodes[target].lat - destLat) > 1e-6 || 
         fabs(graph.nodes[target].lon - destLon) > 1e-6) {
         double walkDist = haversineDistance(graph.nodes[target].lat, 
@@ -1221,6 +1213,7 @@ void solveProblem5(Graph &graph, double srcLat, double srcLon,
 }
 
 
+// PROBLEM 6: Find cheapest route that arrives before deadline
 void solveProblem6(Graph &graph, double srcLat, double srcLon, 
                    double destLat, double destLon, int startTimeMin, int deadlineMin) {
     
@@ -1228,11 +1221,6 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
     
     int source = graph.findNearestNode(srcLat, srcLon);
     int target = graph.findNearestNode(destLat, destLon);
-    
-    if (source == -1 || target == -1) {
-        cout << "Error: Could not find nodes\n";
-        return;
-    }
     
     cout << "Source Node: " << graph.nodes[source].name << "\n";
     cout << "Target Node: " << graph.nodes[target].name << "\n";
@@ -1261,7 +1249,7 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
     cost[source] = 0;
     arrivalTime[source] = startTimeMin;
     
-    // Optimize for cost (like Problem 4), but with deadline constraint
+    // Optimize for cost, but with deadline constraint
     priority_queue<pair<double, int>, vector<pair<double, int>>, greater<pair<double, int>>> pq;
     pq.push({0, source});
     
@@ -1274,13 +1262,11 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
         
         if (u == target) break;
         
-        // Get arrival mode at node u
         Mode arrivalMode = MODE_CAR;
         if (prevEdgeIdx[u] >= 0) {
             arrivalMode = graph.adjList[prev[u]][prevEdgeIdx[u]].mode;
         }
         
-        // Relax edges
         for (int edgeIdx = 0; edgeIdx < graph.adjList[u].size(); edgeIdx++) {
             auto &edge = graph.adjList[u][edgeIdx];
             
@@ -1369,7 +1355,7 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
     cout << "Start Time: " << formatTime(startTimeMin) << "\n";
     cout << "Deadline: " << formatTime(deadlineMin) << "\n\n";
     
-    // Walking from source
+    // Walking from source if needed
     if (fabs(graph.nodes[source].lat - srcLat) > 1e-6 || 
         fabs(graph.nodes[source].lon - srcLon) > 1e-6) {
         double walkDist = haversineDistance(srcLat, srcLon, 
@@ -1452,18 +1438,18 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
         totalDistance += edge.distance;
         totalCost += edge.distance * rate;
         totalTravelTime += travelTime;
-        
-        cout << "[" << formatTime((int)currentTime) << "] Ride " << getModeName(mode)
-             << " from " << graph.nodes[from].name << " to " << graph.nodes[to].name
-             << ", Distance: " << segDist << " km, Time: " << travelTime 
-             << " min, Cost: ৳" << segCost << "\n";
-        
-        currentTime += travelTime;
-        prevMode = mode;
-        isFirstSegment = false;
     }
     
-    // Walking to destination
+    // Print last accumulated segment
+    if (segmentDist > 0) {
+        cout << "[" << formatTime((int)segmentStartTime) << "] Ride " 
+             << getModeName(currentMode) << " from " << graph.nodes[segmentStart].name 
+             << " to " << graph.nodes[target].name << ", Distance: " << segmentDist 
+             << " km, Time: " << segmentTime << " min, Cost: ৳" << segmentCost << "\n";
+        currentTime = segmentStartTime + segmentTime;
+    }
+    
+    // Walking to destination if needed
     if (fabs(graph.nodes[target].lat - destLat) > 1e-6 || 
         fabs(graph.nodes[target].lon - destLon) > 1e-6) {
         double walkDist = haversineDistance(graph.nodes[target].lat, 

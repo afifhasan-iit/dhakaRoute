@@ -120,9 +120,9 @@ string formatTime(int minutes) {
 // ============================================================================
 
 double getWaitingTime(int currentTimeMin, Mode mode) {
-    // For Problems 4 & 5: Uniform schedule (every 15 minutes, 6 AM - 11 PM)
     
-    // Cars and walking don't require waiting
+    
+    // Cno need to wait for cars or walk
     if (mode == MODE_CAR || mode == MODE_WALK) {
         return 0.0;
     }

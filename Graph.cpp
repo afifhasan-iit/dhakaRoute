@@ -88,7 +88,7 @@ void parseRoadmapCSV(Graph &graph, string filename) {
         // Split CSV line
         vector<string> tokens = splitCSV(line);
         
-        // Need at least: type, lat,, altitude, length = 6 tokens
+        // Need at least: type, 2 pairs, altitude, length = 6 tokens
         if (tokens.size() < 6) continue;
         
         // Last two tokens should be altitude and length (numbers)
@@ -358,7 +358,7 @@ void solveProblem1(Graph &graph, double srcLat, double srcLon,
     
     // Reconstruct path from target to source
     vector<int> path;
-    for (int at = target; at != -1; at = prev[at]) {    //previos of source is -1, 
+    for (int at = target; at != -1; at = prev[at]) {    //previous of source is -1, 
         path.push_back(at);
     }
     
@@ -424,7 +424,7 @@ void solveProblem1(Graph &graph, double srcLat, double srcLon,
 
 
 
-// Find cheapest route using car and metro (optimize for cost, not distance)
+// PROBLEM 2: Find cheapest route using car and metro
 void solveProblem2(Graph &graph, double srcLat, double srcLon, 
                    double destLat, double destLon) {
     
@@ -512,38 +512,70 @@ void solveProblem2(Graph &graph, double srcLat, double srcLon,
     cout << "Source: (" << srcLon << ", " << srcLat << ")\n";
     cout << "Destination: (" << destLon << ", " << destLat << ")\n\n";
     
+    // Walking from source if needed
+    if (fabs(graph.nodes[source].lat - srcLat) > 1e-6 || 
+        fabs(graph.nodes[source].lon - srcLon) > 1e-6) {
+        double walkDist = haversineDistance(srcLat, srcLon, 
+                                           graph.nodes[source].lat, 
+                                           graph.nodes[source].lon);
+        cout << "Walk from Source to " << graph.nodes[source].name 
+             << ", Distance: " << walkDist << " km, Cost: ৳0.00\n";
+        totalDistance += walkDist;
+    }
     
-    // Print each segment with correct mode
+    // Print merged segments (only when mode changes)
+    Mode currentMode = MODE_WALK;  // Initialize to something that won't match
+    int segmentStart = path.size() - 1;
+    double segmentDist = 0.0;
+    double segmentCost = 0.0;
+    
     for (int i = path.size() - 1; i > 0; i--) {
         int from = path[i];
         int to = path[i - 1];
         int edgeIdx = edgePath[i - 1];
         
-        // Get the edge that was used
         auto &edge = graph.adjList[from][edgeIdx];
-        double segDist = edge.distance;
         Mode mode = edge.mode;
         
-        double rate = (mode == MODE_METRO) ? 5.0 : 20.0;
-        double segCost = segDist * rate;
+        // Check if mode changed
+        if (mode != currentMode) {
+            // Print accumulated segment if exists
+            if (currentMode != MODE_WALK && segmentDist > 0) {
+                cout << "Ride " << getModeName(currentMode) << " from " 
+                     << graph.nodes[segmentStart].name << " to " << graph.nodes[from].name 
+                     << ", Distance: " << segmentDist << " km, Cost: ৳" << segmentCost << "\n";
+            }
+            
+            // Start new segment
+            currentMode = mode;
+            segmentStart = from;
+            segmentDist = 0.0;
+            segmentCost = 0.0;
+        }
         
-        totalDistance += segDist;
-        totalCost += segCost;
-        
-        cout << "Ride " << getModeName(mode) << " from " << graph.nodes[from].name 
-             << " to " << graph.nodes[to].name << ", Distance: " << segDist 
-             << " km, Cost: ৳" << segCost << "\n";
+        // Accumulate current edge
+        double rate = (mode == MODE_METRO) ? metroRate : carRate;
+        segmentDist += edge.distance;
+        segmentCost += edge.distance * rate;
+        totalDistance += edge.distance;
+        totalCost += edge.distance * rate;
     }
     
-    // Walking to destination
+    // Print last accumulated segment
+    if (segmentDist > 0) {
+        cout << "Ride " << getModeName(currentMode) << " from " 
+             << graph.nodes[segmentStart].name << " to " << graph.nodes[target].name 
+             << ", Distance: " << segmentDist << " km, Cost: ৳" << segmentCost << "\n";
+    }
+    
+    // Walking to destination if needed
     if (fabs(graph.nodes[target].lat - destLat) > 1e-6 || 
         fabs(graph.nodes[target].lon - destLon) > 1e-6) {
         double walkDist = haversineDistance(graph.nodes[target].lat, 
                                            graph.nodes[target].lon,
                                            destLat, destLon);
         cout << "Walk from " << graph.nodes[target].name 
-             << " to Destination (" << destLon << ", " << destLat 
-             << "), Distance: " << walkDist << " km, Cost: ৳0.00\n";
+             << " to Destination, Distance: " << walkDist << " km, Cost: ৳0.00\n";
         totalDistance += walkDist;
     }
     
@@ -553,23 +585,16 @@ void solveProblem2(Graph &graph, double srcLat, double srcLon,
     exportPathToKML(graph, path, "route_problem2.kml");
 }
 
-// ============================================================================
-// PROBLEM 3: CHEAPEST ROUTE (CAR + METRO + BUSES)
-// ============================================================================
 
+// PROBLEM 3: Find cheapest route using car, metro, and both bus types
 void solveProblem3(Graph &graph, double srcLat, double srcLon, 
                    double destLat, double destLon) {
-    // Find cheapest route using car, metro, and both bus types
     
     cout << "\n=== Problem 3: Cheapest Route (All Modes) ===\n";
     
     int source = graph.findNearestNode(srcLat, srcLon);
     int target = graph.findNearestNode(destLat, destLon);
     
-    if (source == -1 || target == -1) {
-        cout << "Error: Could not find nodes\n";
-        return;
-    }
     
     cout << "Source Node: " << graph.nodes[source].name << "\n";
     cout << "Target Node: " << graph.nodes[target].name << "\n";
@@ -592,7 +617,7 @@ void solveProblem3(Graph &graph, double srcLat, double srcLon,
     priority_queue<pair<double, int>, vector<pair<double, int>>, greater<pair<double, int>>> pq;
     pq.push({0, source});
     
-    // Dijkstra's algorithm
+    // Dijkstra
     while (!pq.empty()) {
         auto [currentCost, u] = pq.top();
         pq.pop();
@@ -605,12 +630,6 @@ void solveProblem3(Graph &graph, double srcLat, double srcLon,
         // Relax edges - consider all 4 transport modes
         for (int edgeIdx = 0; edgeIdx < graph.adjList[u].size(); edgeIdx++) {
             auto &edge = graph.adjList[u][edgeIdx];
-            
-            // Only consider the 4 allowed modes
-            if (edge.mode != MODE_CAR && edge.mode != MODE_METRO && 
-                edge.mode != MODE_BIKOLPO && edge.mode != MODE_UTTARA) {
-                continue;
-            }
             
             int v = edge.to;
             
@@ -656,7 +675,7 @@ void solveProblem3(Graph &graph, double srcLat, double srcLon,
     cout << "Source: (" << srcLon << ", " << srcLat << ")\n";
     cout << "Destination: (" << destLon << ", " << destLat << ")\n\n";
     
-    // Walking from source
+    // Walking from source if needed
     if (fabs(graph.nodes[source].lat - srcLat) > 1e-6 || 
         fabs(graph.nodes[source].lon - srcLon) > 1e-6) {
         double walkDist = haversineDistance(srcLat, srcLon, 
@@ -667,31 +686,56 @@ void solveProblem3(Graph &graph, double srcLat, double srcLon,
         totalDistance += walkDist;
     }
     
-    // Print each segment
+    // Print merged segments (only when mode changes)
+    Mode currentMode = MODE_WALK;
+    int segmentStart = path.size() - 1;
+    double segmentDist = 0.0;
+    double segmentCost = 0.0;
+    
     for (int i = path.size() - 1; i > 0; i--) {
         int from = path[i];
         int to = path[i - 1];
         int edgeIdx = edgePath[i - 1];
         
         auto &edge = graph.adjList[from][edgeIdx];
-        double segDist = edge.distance;
         Mode mode = edge.mode;
         
+        // Check if mode changed
+        if (mode != currentMode) {
+            // Print accumulated segment if exists
+            if (currentMode != MODE_WALK && segmentDist > 0) {
+                cout << "Ride " << getModeName(currentMode) << " from " 
+                     << graph.nodes[segmentStart].name << " to " << graph.nodes[from].name 
+                     << ", Distance: " << segmentDist << " km, Cost: ৳" << segmentCost << "\n";
+            }
+            
+            // Start new segment
+            currentMode = mode;
+            segmentStart = from;
+            segmentDist = 0.0;
+            segmentCost = 0.0;
+        }
+        
+        // Accumulate current edge
         double rate = carRate;
         if (mode == MODE_METRO) rate = metroRate;
         else if (mode == MODE_BIKOLPO) rate = bikolpoRate;
         else if (mode == MODE_UTTARA) rate = uttaraRate;
         
-        double segCost = segDist * rate;
-        totalDistance += segDist;
-        totalCost += segCost;
-        
-        cout << "Ride " << getModeName(mode) << " from " << graph.nodes[from].name 
-             << " to " << graph.nodes[to].name << ", Distance: " << segDist 
-             << " km, Cost: ৳" << segCost << "\n";
+        segmentDist += edge.distance;
+        segmentCost += edge.distance * rate;
+        totalDistance += edge.distance;
+        totalCost += edge.distance * rate;
     }
     
-    // Walking to destination
+    // Print last accumulated segment
+    if (segmentDist > 0) {
+        cout << "Ride " << getModeName(currentMode) << " from " 
+             << graph.nodes[segmentStart].name << " to " << graph.nodes[target].name 
+             << ", Distance: " << segmentDist << " km, Cost: ৳" << segmentCost << "\n";
+    }
+    
+    // Walking to destination if needed
     if (fabs(graph.nodes[target].lat - destLat) > 1e-6 || 
         fabs(graph.nodes[target].lon - destLon) > 1e-6) {
         double walkDist = haversineDistance(graph.nodes[target].lat, 
@@ -708,10 +752,8 @@ void solveProblem3(Graph &graph, double srcLat, double srcLon,
     exportPathToKML(graph, path, "route_problem3.kml");
 }
 
-// ============================================================================
-// PROBLEM 4: CHEAPEST WITH TIME SCHEDULES
-// ============================================================================
 
+// PROBLEM 4: cheapest with time schedules
 void solveProblem4(Graph &graph, double srcLat, double srcLon, 
                    double destLat, double destLon, int startTimeMin) {
     // Find cheapest route considering bus/metro schedules
@@ -721,11 +763,6 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
     
     int source = graph.findNearestNode(srcLat, srcLon);
     int target = graph.findNearestNode(destLat, destLon);
-    
-    if (source == -1 || target == -1) {
-        cout << "Error: Could not find nodes\n";
-        return;
-    }
     
     cout << "Source Node: " << graph.nodes[source].name << "\n";
     cout << "Target Node: " << graph.nodes[target].name << "\n";
@@ -752,6 +789,7 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
     priority_queue<pair<double, int>, vector<pair<double, int>>, greater<pair<double, int>>> pq;
     pq.push({0, source});
     
+    //Dijkstra 
     while (!pq.empty()) {
         auto [currentCost, u] = pq.top();
         pq.pop();
@@ -786,7 +824,6 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
                     waitTime = getWaitingTime((int)arrivalTime[u], edge.mode);
                     if (waitTime >= INF) continue;  // Service not available
                 }
-                // Otherwise, continuing on same vehicle, no wait
             }
             
             // Calculate travel time at 30 km/h
@@ -841,7 +878,7 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
     cout << "Destination: (" << destLon << ", " << destLat << ")\n";
     cout << "Start Time: " << formatTime(startTimeMin) << "\n\n";
     
-    // Walking from source
+    // Walking from source if needed
     if (fabs(graph.nodes[source].lat - srcLat) > 1e-6 || 
         fabs(graph.nodes[source].lon - srcLon) > 1e-6) {
         double walkDist = haversineDistance(srcLat, srcLon, 
@@ -858,23 +895,35 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
         currentTime += walkTime;
     }
     
-    // Track previous mode to detect mode switches
-    Mode prevMode = MODE_CAR;
-    bool isFirstSegment = true;
+    // Print merged segments with timing (only when mode changes)
+    Mode currentMode = MODE_WALK;
+    int segmentStart = path.size() - 1;
+    double segmentDist = 0.0;
+    double segmentCost = 0.0;
+    double segmentTime = 0.0;
+    double segmentStartTime = currentTime;
     
-    // Print each segment with timing
     for (int i = path.size() - 1; i > 0; i--) {
         int from = path[i];
         int to = path[i - 1];
         int edgeIdx = edgePath[i - 1];
         
         auto &edge = graph.adjList[from][edgeIdx];
-        double segDist = edge.distance;
         Mode mode = edge.mode;
         
-        // Check if need to wait (only when boarding)
-        if (mode != MODE_CAR && mode != MODE_WALK) {
-            if (isFirstSegment || mode != prevMode) {
+        // Check if mode changed
+        if (mode != currentMode) {
+            // Print accumulated segment if exists
+            if (currentMode != MODE_WALK && segmentDist > 0) {
+                cout << "[" << formatTime((int)segmentStartTime) << "] Ride " 
+                     << getModeName(currentMode) << " from " << graph.nodes[segmentStart].name 
+                     << " to " << graph.nodes[from].name << ", Distance: " << segmentDist 
+                     << " km, Time: " << segmentTime << " min, Cost: ৳" << segmentCost << "\n";
+                currentTime = segmentStartTime + segmentTime;
+            }
+            
+            // Check if need to wait for new vehicle
+            if (mode != MODE_CAR && mode != MODE_WALK) {
                 double waitTime = getWaitingTime((int)currentTime, mode);
                 if (waitTime > 0 && waitTime < INF) {
                     cout << "[" << formatTime((int)currentTime) << "] Wait for "
@@ -883,31 +932,42 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
                     totalTravelTime += waitTime;
                 }
             }
+            
+            // Start new segment
+            currentMode = mode;
+            segmentStart = from;
+            segmentDist = 0.0;
+            segmentCost = 0.0;
+            segmentTime = 0.0;
+            segmentStartTime = currentTime;
         }
         
+        // Accumulate current edge
         double rate = carRate;
         if (mode == MODE_METRO) rate = metroRate;
         else if (mode == MODE_BIKOLPO) rate = bikolpoRate;
         else if (mode == MODE_UTTARA) rate = uttaraRate;
         
-        double segCost = segDist * rate;
-        double travelTime = (segDist / VEHICLE_SPEED_KMH) * 60.0;
+        double travelTime = (edge.distance / VEHICLE_SPEED_KMH) * 60.0;
         
-        totalDistance += segDist;
-        totalCost += segCost;
+        segmentDist += edge.distance;
+        segmentCost += edge.distance * rate;
+        segmentTime += travelTime;
+        totalDistance += edge.distance;
+        totalCost += edge.distance * rate;
         totalTravelTime += travelTime;
-        
-        cout << "[" << formatTime((int)currentTime) << "] Ride " << getModeName(mode)
-             << " from " << graph.nodes[from].name << " to " << graph.nodes[to].name
-             << ", Distance: " << segDist << " km, Time: " << travelTime 
-             << " min, Cost: ৳" << segCost << "\n";
-        
-        currentTime += travelTime;
-        prevMode = mode;
-        isFirstSegment = false;
     }
     
-    // Walking to destination
+    // Print last accumulated segment
+    if (segmentDist > 0) {
+        cout << "[" << formatTime((int)segmentStartTime) << "] Ride " 
+             << getModeName(currentMode) << " from " << graph.nodes[segmentStart].name 
+             << " to " << graph.nodes[target].name << ", Distance: " << segmentDist 
+             << " km, Time: " << segmentTime << " min, Cost: ৳" << segmentCost << "\n";
+        currentTime = segmentStartTime + segmentTime;
+    }
+    
+    // Walking to destination if needed
     if (fabs(graph.nodes[target].lat - destLat) > 1e-6 || 
         fabs(graph.nodes[target].lon - destLon) > 1e-6) {
         double walkDist = haversineDistance(graph.nodes[target].lat, 
@@ -933,24 +993,14 @@ void solveProblem4(Graph &graph, double srcLat, double srcLon,
     exportPathToKML(graph, path, "route_problem4.kml");
 }
 
-// ============================================================================
-// PROBLEM 5: FASTEST ROUTE WITH TIME SCHEDULES
-// ============================================================================
-
+// PROBLEM 5: fastest way (schedules are still considered)
 void solveProblem5(Graph &graph, double srcLat, double srcLon, 
                    double destLat, double destLon, int startTimeMin) {
-    // Find fastest route (minimize time, not cost)
-    // All vehicles at 10 km/h, buses/metro every 15 min (6 AM - 11 PM)
     
     cout << "\n=== Problem 5: Fastest Route ===\n";
     
     int source = graph.findNearestNode(srcLat, srcLon);
     int target = graph.findNearestNode(destLat, destLon);
-    
-    if (source == -1 || target == -1) {
-        cout << "Error: Could not find nodes\n";
-        return;
-    }
     
     cout << "Source Node: " << graph.nodes[source].name << "\n";
     cout << "Target Node: " << graph.nodes[target].name << "\n";
@@ -964,17 +1014,17 @@ void solveProblem5(Graph &graph, double srcLat, double srcLon,
     double uttaraRate = 10.0;
     
     // Now optimizing for TIME, not cost
-    vector<double> arrivalTime(n, INF);  // Primary metric: earliest arrival time
+    vector<double> arrivalTime(n, INF);
     vector<int> prev(n, -1);
     vector<int> prevEdgeIdx(n, -1);
     vector<bool> visited(n, false);
     
     arrivalTime[source] = startTimeMin;
     
-    // Priority queue: (arrival_time, node_id) - optimizing for time now!
     priority_queue<pair<double, int>, vector<pair<double, int>>, greater<pair<double, int>>> pq;
     pq.push({startTimeMin, source});
     
+    //dijkstra 
     while (!pq.empty()) {
         auto [currentTime, u] = pq.top();
         pq.pop();
@@ -994,14 +1044,9 @@ void solveProblem5(Graph &graph, double srcLat, double srcLon,
         for (int edgeIdx = 0; edgeIdx < graph.adjList[u].size(); edgeIdx++) {
             auto &edge = graph.adjList[u][edgeIdx];
             
-            if (edge.mode != MODE_CAR && edge.mode != MODE_METRO && 
-                edge.mode != MODE_BIKOLPO && edge.mode != MODE_UTTARA) {
-                continue;
-            }
-            
             int v = edge.to;
             
-            // Calculate waiting time (only when boarding)
+            // Calculate waiting time (when changing vehicle)
             double waitTime = 0.0;
             if (edge.mode != MODE_CAR && edge.mode != MODE_WALK) {
                 if (edge.mode != arrivalMode || u == source) {
@@ -1010,11 +1055,9 @@ void solveProblem5(Graph &graph, double srcLat, double srcLon,
                 }
             }
             
-            // Calculate travel time at 10 km/h (slower than Problem 4!)
             double travelTime = (edge.distance / VEHICLE_SPEED_PROBLEM5_KMH) * 60.0;
             double newArrivalTime = arrivalTime[u] + waitTime + travelTime;
             
-            // Update if FASTER (not cheaper)
             if (newArrivalTime < arrivalTime[v]) {
                 arrivalTime[v] = newArrivalTime;
                 prev[v] = u;
@@ -1054,7 +1097,7 @@ void solveProblem5(Graph &graph, double srcLat, double srcLon,
     cout << "Destination: (" << destLon << ", " << destLat << ")\n";
     cout << "Start Time: " << formatTime(startTimeMin) << "\n\n";
     
-    // Walking from source
+    // Walking from source if needed
     if (fabs(graph.nodes[source].lat - srcLat) > 1e-6 || 
         fabs(graph.nodes[source].lon - srcLon) > 1e-6) {
         double walkDist = haversineDistance(srcLat, srcLon, 
@@ -1071,22 +1114,35 @@ void solveProblem5(Graph &graph, double srcLat, double srcLon,
         currentTime += walkTime;
     }
     
-    Mode prevMode = MODE_CAR;
-    bool isFirstSegment = true;
+    // Print merged segments (only when mode changes)
+    Mode currentMode = MODE_WALK;
+    int segmentStart = path.size() - 1;
+    double segmentDist = 0.0;
+    double segmentCost = 0.0;
+    double segmentTime = 0.0;
+    double segmentStartTime = currentTime;
     
-    // Print each segment
     for (int i = path.size() - 1; i > 0; i--) {
         int from = path[i];
         int to = path[i - 1];
         int edgeIdx = edgePath[i - 1];
         
         auto &edge = graph.adjList[from][edgeIdx];
-        double segDist = edge.distance;
         Mode mode = edge.mode;
         
-        // Wait time
-        if (mode != MODE_CAR && mode != MODE_WALK) {
-            if (isFirstSegment || mode != prevMode) {
+        // Check if mode changed
+        if (mode != currentMode) {
+            // Print accumulated segment if exists
+            if (currentMode != MODE_WALK && segmentDist > 0) {
+                cout << "[" << formatTime((int)segmentStartTime) << "] Ride " 
+                     << getModeName(currentMode) << " from " << graph.nodes[segmentStart].name 
+                     << " to " << graph.nodes[from].name << ", Distance: " << segmentDist 
+                     << " km, Time: " << segmentTime << " min, Cost: ৳" << segmentCost << "\n";
+                currentTime = segmentStartTime + segmentTime;
+            }
+            
+            // Wait for new vehicle
+            if (mode != MODE_CAR && mode != MODE_WALK) {
                 double waitTime = getWaitingTime((int)currentTime, mode);
                 if (waitTime > 0 && waitTime < INF) {
                     cout << "[" << formatTime((int)currentTime) << "] Wait for "
@@ -1095,31 +1151,42 @@ void solveProblem5(Graph &graph, double srcLat, double srcLon,
                     totalTravelTime += waitTime;
                 }
             }
+            
+            // Start new segment
+            currentMode = mode;
+            segmentStart = from;
+            segmentDist = 0.0;
+            segmentCost = 0.0;
+            segmentTime = 0.0;
+            segmentStartTime = currentTime;
         }
         
+        // Accumulate current edge
         double rate = carRate;
         if (mode == MODE_METRO) rate = metroRate;
         else if (mode == MODE_BIKOLPO) rate = bikolpoRate;
         else if (mode == MODE_UTTARA) rate = uttaraRate;
         
-        double segCost = segDist * rate;
-        double travelTime = (segDist / VEHICLE_SPEED_PROBLEM5_KMH) * 60.0;  // 10 km/h
+        double travelTime = (edge.distance / VEHICLE_SPEED_PROBLEM5_KMH) * 60.0;  // 10 km/h
         
-        totalDistance += segDist;
-        totalCost += segCost;
+        segmentDist += edge.distance;
+        segmentCost += edge.distance * rate;
+        segmentTime += travelTime;
+        totalDistance += edge.distance;
+        totalCost += edge.distance * rate;
         totalTravelTime += travelTime;
-        
-        cout << "[" << formatTime((int)currentTime) << "] Ride " << getModeName(mode)
-             << " from " << graph.nodes[from].name << " to " << graph.nodes[to].name
-             << ", Distance: " << segDist << " km, Time: " << travelTime 
-             << " min, Cost: ৳" << segCost << "\n";
-        
-        currentTime += travelTime;
-        prevMode = mode;
-        isFirstSegment = false;
     }
     
-    // Walking to destination
+    // Print last accumulated segment
+    if (segmentDist > 0) {
+        cout << "[" << formatTime((int)segmentStartTime) << "] Ride " 
+             << getModeName(currentMode) << " from " << graph.nodes[segmentStart].name 
+             << " to " << graph.nodes[target].name << ", Distance: " << segmentDist 
+             << " km, Time: " << segmentTime << " min, Cost: ৳" << segmentCost << "\n";
+        currentTime = segmentStartTime + segmentTime;
+    }
+    
+    // Walking to destination if needed
     if (fabs(graph.nodes[target].lat - destLat) > 1e-6 || 
         fabs(graph.nodes[target].lon - destLon) > 1e-6) {
         double walkDist = haversineDistance(graph.nodes[target].lat, 
@@ -1145,24 +1212,15 @@ void solveProblem5(Graph &graph, double srcLat, double srcLon,
     exportPathToKML(graph, path, "route_problem5.kml");
 }
 
-// ============================================================================
-// PROBLEM 6: CHEAPEST WITH DEADLINE CONSTRAINT
-// ============================================================================
 
+// PROBLEM 6: Find cheapest route that arrives before deadline
 void solveProblem6(Graph &graph, double srcLat, double srcLon, 
                    double destLat, double destLon, int startTimeMin, int deadlineMin) {
-    // Find cheapest route that arrives before deadline
-    // Different speeds per mode, different schedules per mode
     
     cout << "\n=== Problem 6: Cheapest with Deadline ===\n";
     
     int source = graph.findNearestNode(srcLat, srcLon);
     int target = graph.findNearestNode(destLat, destLon);
-    
-    if (source == -1 || target == -1) {
-        cout << "Error: Could not find nodes\n";
-        return;
-    }
     
     cout << "Source Node: " << graph.nodes[source].name << "\n";
     cout << "Target Node: " << graph.nodes[target].name << "\n";
@@ -1191,7 +1249,7 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
     cost[source] = 0;
     arrivalTime[source] = startTimeMin;
     
-    // Optimize for cost (like Problem 4), but with deadline constraint
+    // Optimize for cost, but with deadline constraint
     priority_queue<pair<double, int>, vector<pair<double, int>>, greater<pair<double, int>>> pq;
     pq.push({0, source});
     
@@ -1204,13 +1262,11 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
         
         if (u == target) break;
         
-        // Get arrival mode at node u
         Mode arrivalMode = MODE_CAR;
         if (prevEdgeIdx[u] >= 0) {
             arrivalMode = graph.adjList[prev[u]][prevEdgeIdx[u]].mode;
         }
         
-        // Relax edges
         for (int edgeIdx = 0; edgeIdx < graph.adjList[u].size(); edgeIdx++) {
             auto &edge = graph.adjList[u][edgeIdx];
             
@@ -1221,7 +1277,6 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
             
             int v = edge.to;
             
-            // Calculate waiting time using Problem 6 schedules
             double waitTime = 0.0;
             if (edge.mode != MODE_CAR && edge.mode != MODE_WALK) {
                 if (edge.mode != arrivalMode || u == source) {
@@ -1300,7 +1355,7 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
     cout << "Start Time: " << formatTime(startTimeMin) << "\n";
     cout << "Deadline: " << formatTime(deadlineMin) << "\n\n";
     
-    // Walking from source
+    // Walking from source if needed
     if (fabs(graph.nodes[source].lat - srcLat) > 1e-6 || 
         fabs(graph.nodes[source].lon - srcLon) > 1e-6) {
         double walkDist = haversineDistance(srcLat, srcLon, 
@@ -1317,22 +1372,35 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
         currentTime += walkTime;
     }
     
-    Mode prevMode = MODE_CAR;
-    bool isFirstSegment = true;
+    // Print merged segments (only when mode changes)
+    Mode currentMode = MODE_WALK;
+    int segmentStart = path.size() - 1;
+    double segmentDist = 0.0;
+    double segmentCost = 0.0;
+    double segmentTime = 0.0;
+    double segmentStartTime = currentTime;
     
-    // Print each segment
     for (int i = path.size() - 1; i > 0; i--) {
         int from = path[i];
         int to = path[i - 1];
         int edgeIdx = edgePath[i - 1];
         
         auto &edge = graph.adjList[from][edgeIdx];
-        double segDist = edge.distance;
         Mode mode = edge.mode;
         
-        // Wait time with Problem 6 schedules
-        if (mode != MODE_CAR && mode != MODE_WALK) {
-            if (isFirstSegment || mode != prevMode) {
+        // Check if mode changed
+        if (mode != currentMode) {
+            // Print accumulated segment if exists
+            if (currentMode != MODE_WALK && segmentDist > 0) {
+                cout << "[" << formatTime((int)segmentStartTime) << "] Ride " 
+                     << getModeName(currentMode) << " from " << graph.nodes[segmentStart].name 
+                     << " to " << graph.nodes[from].name << ", Distance: " << segmentDist 
+                     << " km, Time: " << segmentTime << " min, Cost: ৳" << segmentCost << "\n";
+                currentTime = segmentStartTime + segmentTime;
+            }
+            
+            // Wait for new vehicle with Problem 6 schedules
+            if (mode != MODE_CAR && mode != MODE_WALK) {
                 double waitTime = getWaitingTimeProblem6((int)currentTime, mode);
                 if (waitTime > 0 && waitTime < INF) {
                     cout << "[" << formatTime((int)currentTime) << "] Wait for "
@@ -1341,9 +1409,17 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
                     totalTravelTime += waitTime;
                 }
             }
+            
+            // Start new segment
+            currentMode = mode;
+            segmentStart = from;
+            segmentDist = 0.0;
+            segmentCost = 0.0;
+            segmentTime = 0.0;
+            segmentStartTime = currentTime;
         }
         
-        // Mode-specific speed
+        // Accumulate current edge with mode-specific speed
         double speed = CAR_SPEED_PROBLEM6_KMH;
         if (mode == MODE_METRO) speed = METRO_SPEED_PROBLEM6_KMH;
         else if (mode == MODE_BIKOLPO) speed = BIKOLPO_SPEED_PROBLEM6_KMH;
@@ -1354,41 +1430,49 @@ void solveProblem6(Graph &graph, double srcLat, double srcLon,
         else if (mode == MODE_BIKOLPO) rate = bikolpoRate;
         else if (mode == MODE_UTTARA) rate = uttaraRate;
         
-        double segCost = segDist * rate;
-        double travelTime = (segDist / speed) * 60.0;
+        double travelTime = (edge.distance / speed) * 60.0;
         
-        totalDistance += segDist;
-        totalCost += segCost;
+        segmentDist += edge.distance;
+        segmentCost += edge.distance * rate;
+        segmentTime += travelTime;
+        totalDistance += edge.distance;
+        totalCost += edge.distance * rate;
         totalTravelTime += travelTime;
-        
-        cout << "[" << formatTime((int)currentTime) << "] Ride " << getModeName(mode)
-             << " from " << graph.nodes[from].name << " to " << graph.nodes[to].name
-             << ", Distance: " << segDist << " km, Time: " << travelTime 
-             << " min, Cost: ৳" << segCost << "\n";
-        
-        currentTime += travelTime;
-        prevMode = mode;
-        isFirstSegment = false;
     }
     
-    // Walking to destination
-    if (fabs(graph.nodes[target].lat - destLat) > 1e-6 || 
-        fabs(graph.nodes[target].lon - destLon) > 1e-6) {
-        double walkDist = haversineDistance(graph.nodes[target].lat, 
-                                           graph.nodes[target].lon,
-                                           destLat, destLon);
-        double walkTime = (walkDist / WALK_SPEED_KMH) * 60.0;
-        
-        cout << "[" << formatTime((int)currentTime) << "] Walk from "
-             << graph.nodes[target].name << " to Destination, Distance: " 
-             << walkDist << " km, Time: " << walkTime << " min, Cost: ৳0.00\n";
-        
-        totalDistance += walkDist;
-        totalTravelTime += walkTime;
-        currentTime += walkTime;
-    }
+// Print last accumulated segment
+if (segmentDist > 0) {
+    cout << "[" << formatTime((int)segmentStartTime) << "] Ride " 
+         << getModeName(currentMode) << " from " << graph.nodes[segmentStart].name 
+         << " to " << graph.nodes[target].name << ", Distance: " << segmentDist 
+         << " km, Time: " << segmentTime << " min, Cost: ৳" << segmentCost << "\n";
+    // Don't update currentTime here yet - will be calculated at the end
+}
+
+// Walking to destination if needed
+if (fabs(graph.nodes[target].lat - destLat) > 1e-6 || 
+    fabs(graph.nodes[target].lon - destLon) > 1e-6) {
+    double walkDist = haversineDistance(graph.nodes[target].lat, 
+                                       graph.nodes[target].lon,
+                                       destLat, destLon);
+    double walkTime = (walkDist / WALK_SPEED_KMH) * 60.0;
     
-    cout << "\nArrival Time: " << formatTime((int)currentTime) << "\n";
+    // Calculate correct time: segment start + segment time
+    double walkStartTime = segmentStartTime + segmentTime;
+    
+    cout << "[" << formatTime((int)walkStartTime) << "] Walk from "
+         << graph.nodes[target].name << " to Destination, Distance: " 
+         << walkDist << " km, Time: " << walkTime << " min, Cost: ৳0.00\n";
+    
+    totalDistance += walkDist;
+    totalTravelTime += walkTime;
+    currentTime = walkStartTime + walkTime;  // Final time
+} else {
+    // No walking needed, final time is end of last segment
+    currentTime = segmentStartTime + segmentTime;
+}
+
+cout << "\nArrival Time: " << formatTime((int)currentTime) << "\n";
     cout << "Total Distance: " << totalDistance << " km\n";
     cout << "Total Travel Time: " << totalTravelTime << " minutes (" 
          << (totalTravelTime / 60.0) << " hours)\n";

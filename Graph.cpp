@@ -9,9 +9,6 @@
 
 using namespace std;
 
-// ============================================================================
-// GRAPH BASIC OPERATIONS
-// ============================================================================
 
 int Graph::findOrAddNode(double lat, double lon, string name) {
     // Search for existing node within tolerance (~10 meters)

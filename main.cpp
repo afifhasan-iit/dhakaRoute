@@ -102,48 +102,11 @@ int main() {
             }
                 
             case 5: {
-                // Problem 5: Fastest route (minimize time)
-                string timeInput;
-                cout << "Enter starting time (e.g., '5:43 PM' or '9:30 AM'): ";
-                cin.ignore();
-                getline(cin, timeInput);
-                
-                int startTimeMin = parseTime(timeInput);
-                if (startTimeMin < 0) {
-                    cout << "Invalid time format. Please use format like '5:43 PM'" << endl;
-                    break;
-                }
-                
-                solveProblem5(graph, srcLat, srcLon, destLat, destLon, startTimeMin);
-                break;
+
             }
                 
             case 6: {
-                // Problem 6: Cheapest meeting deadline
-                string timeInput, deadlineInput;
-                
-                cout << "Enter starting time (e.g., '5:43 PM' or '9:30 AM'): ";
-                cin.ignore();
-                getline(cin, timeInput);
-                
-                int startTimeMin = parseTime(timeInput);
-                if (startTimeMin < 0) {
-                    cout << "Invalid time format." << endl;
-                    break;
-                }
-                
-                cout << "Enter deadline time (e.g., '8:12 PM' or '11:00 AM'): ";
-                getline(cin, deadlineInput);
-                
-                int deadlineMin = parseTime(deadlineInput);
-                if (deadlineMin < 0) {
-                    cout << "Invalid deadline format." << endl;
-                    break;
-                }
-                
-                solveProblem6(graph, srcLat, srcLon, destLat, destLon, 
-                             startTimeMin, deadlineMin);
-                break;
+
             }
                 
             default:
